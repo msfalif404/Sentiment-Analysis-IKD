@@ -18,7 +18,7 @@ from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 factory = StemmerFactory()
 stemmer = factory.create_stemmer()
 all_stopwords = stopwords.words('indonesian')
-kata_negasi = ['tidak', 'bukan', 'tak', 'tiada', 'belum', 'jangan', 'enggak', 'takkan', 'tidaklah', 'takluk']
+kata_negasi = ['ga','gak','tidak', 'bukan', 'tak', 'tiada', 'belum', 'jangan', 'enggak', 'takkan', 'tidaklah', 'takluk']
 stopwords = [word for word in all_stopwords if word not in kata_negasi]
 df = pd.read_csv('pasd_ikd_dataset_final.csv')
 
@@ -31,14 +31,66 @@ with open('tfidf_vectorizer.pkl', 'rb') as f:
     tfidf_vectorizer = pickle.load(f)
 
 def preprocess_text(text):
-    # Hapus karakter non-alphanumeric dan ubah ke huruf kecil
-    text = re.sub(r'[^a-zA-Z\s]', ' ', text.lower())
-    # Lematisasi dan hapus stop words
-    processed_words = [stemmer.stem(word) for word in text.split() if word not in all_stopwords]
+    # Konversi teks ke huruf kecil
+    text = text.lower()
+    # Menghapus teks yang memiliki awalan @ dan URL/Path menggunakan regular expression
+    text = re.sub(r'@[A-Za-z0-9_]+|https?://\S+|www\.\S+|/[A-Za-z0-9]+', '', text)
+    # Membuat kamus untuk translasi
+    translation_table = str.maketrans('', '', '=[],.:()?"+&-!')
+    # Menggunakan translate() untuk mengganti simbol dengan string kosong
+    text = text.translate(translation_table)
+    # Menghapus karakter non-ASCII
+    text = re.sub(r'[^\x00-\x7F]+', '', text)
+    # Menghapus string yang diawali dengan [ dan diakhiri dengan ]
+    text = re.sub(r'\[.*?\]', '', text)
+    # Menghapus teks yang diawali dengan "+"
+    text = re.sub(r'\+[A-Za-z0-9_]+', '', text)
+    # Menghapus teks yang diawali dan diakhiri dengan tanda garis bawah
+    text = re.sub(r'^_|_$', '', text)
+    text = re.sub(r'(?<=\S)_\w+', '', text)
+    text = re.sub(r'_\w+_', '', text)
+    text = re.sub(r'\s*_[xX][0-9a-fA-F]{2}\s*', '', text)
+    # Menghapus whitespace ekstra
+    text = ' '.join(text.split())
+    # Mengganti karakter yang berulang dengan satu kemunculan saja
+    text = re.sub(r'(.)\1+', r'\1', text)
+   # Menghapus stopwords yang sudah ditentukan
+    words = [word for word in text.split() if word not in stopwords]
     # Gabungkan kata-kata kembali menjadi satu string
-    processed_text = ' '.join(processed_words)
+    processed_text = ' '.join(words)
 
-    return processed_text
+    return text
+
+dataset_referensi = {
+    "ap": "aplikasi",
+    "app": "aplikasi",
+    "apk": "aplikasi",
+    "ak": "aku",
+    "km": "kamu",
+    "sy": "saya",
+    "tdk": "tidak",
+    "bka": "buka",
+    "jg": "juga",
+    "jk": "jika",
+    "msh": "masih",
+    "yg": "yang",
+    "klo": "kalau",
+    "gblk": "goblok",
+    "la": "lah",
+    "gk": "gak",
+    "blm": "belum",
+    "belom": "belum",
+    "buk": "buka",
+    "tlg": "tolong",
+    "maf": "maaf"
+}
+
+def perpanjang_kata_singkatan_teks(teks):
+    teks_diperpanjang = teks
+    for kata in teks.split():
+        if kata in dataset_referensi:
+            teks_diperpanjang = teks_diperpanjang.replace(kata, dataset_referensi[kata])
+    return teks_diperpanjang
 
 def predict_sentiment(word):
     word_vector = tfidf_vectorizer.transform([word])
@@ -172,6 +224,7 @@ def main():
         st.header("Prediksi Kalimat Secara Langsung")
         input_text = st.text_area("Masukkan teks:")
         text = preprocess_text(input_text)
+        text = perpanjang_kata_singkatan_teks(text)
 
         if st.button("Predict"):
             sentimen = predict_sentiment(text)
