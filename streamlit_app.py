@@ -15,12 +15,14 @@ from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 
 # GLOBAL VARIABLE
+st.set_page_config(page_title="Dashboard - Sentiment Analysis IKD")
 factory = StemmerFactory()
 stemmer = factory.create_stemmer()
 all_stopwords = stopwords.words('indonesian')
 kata_negasi = ['ga','gak','tidak', 'bukan', 'tak', 'tiada', 'belum', 'jangan', 'enggak', 'takkan', 'tidaklah', 'takluk']
 stopwords = [word for word in all_stopwords if word not in kata_negasi]
 df = pd.read_csv('pasd_ikd_dataset_final.csv')
+df2 = pd.read_csv('psd_ikd_dataset_clean.csv')
 
 # Meload model dari file
 with open('model_catboost.pkl', 'rb') as f:
@@ -106,7 +108,8 @@ def main():
     st.title("Sentiment Analysis Aplikasi Identitas Kependudukan Digital ✨")
 
     # Sidebar
-    st.sidebar.title("Menu")
+    st.sidebar.title("IKD")
+    st.sidebar.subheader("Menu")
     option = st.sidebar.selectbox(
         'Pilih opsi:',
         ('Beranda', 'EDA', 'Predict')
@@ -131,19 +134,85 @@ def main():
     elif option == 'EDA':
         st.write("Selamat datang ! ini adalah halaman EDA yang berfungsi untuk menampilkan visualisasi hasil eksplorasi data")
 
+        st.subheader('Nilai Sampel dari Dataset')
+        st.write(df2.head())
+
         # Mengambil nilai perhitungan distribusi kelas
         class_counts = df['score'].value_counts()
         
+        st.subheader("Distribusi Skor Aplikasi Identitas Kependudukan Digital")
         # Menampilkan diagram batang
         st.bar_chart(class_counts)
+        st.divider()
+        st.write("**Insight**: aplikasi Identitas Kependudukan Digital memiliki dua kelompok pengguna yang dominan: satu kelompok yang sangat tidak puas dan satu kelompok yang sangat puas. Hal ini mengindikasikan bahwa ada aspek-aspek tertentu dari aplikasi yang sangat berhasil bagi sebagian pengguna, sementara aspek lain mungkin menyebabkan frustrasi atau kekecewaan bagi yang lain.")
+        st.divider()
 
         # Mengambil nilai perhitungan distribusi kelas
         class_counts = df['tone'].value_counts()
 
+        st.subheader("Distribusi Tone Aplikasi Identitas Kependudukan Digital")
         # Menampilkan diagram batang
         st.bar_chart(class_counts)
+        st.divider()
+        st.write("**Insight**: banyak pengguna memiliki sentimen negatif terhadap aplikasi ini dibandingkan dengan yang memiliki sentimen positif. Meski demikian, perbedaan antara tone negatif dan positif tidak terlalu besar, menunjukkan adanya kelompok signifikan yang tetap puas dengan aplikasi ini meskipun ada kritik yang dominan.")
+        st.divider()
 
-        st.title('WordCloud')
+        # Fungsi untuk menentukan dominasi tone
+        def determine_dominant_tone(group):
+            positive_count = (group['tone'] == 1).sum()
+            negative_count = (group['tone'] == -1).sum()
+            if positive_count > negative_count:
+                return 1
+            elif negative_count > positive_count:
+                return -1
+            else:
+                return 0
+
+        # Contoh DataFrame
+        # df2 = pd.read_csv('path_to_your_data.csv')
+
+        # Menghitung dominasi tone per bulan
+        dominant_tone_per_month = df2.groupby(['year', 'month']).apply(determine_dominant_tone).reset_index(name='dominant_tone')
+
+        # Menentukan rentang tahun dan bulan
+        start_year = df2['year'].min()
+        end_year = df2['year'].max()
+        start_month = df2['month'].min()
+        end_month = 5
+
+        # Membuat daftar semua bulan dalam rentang tahun yang ada
+        all_months = pd.date_range(start=f'{start_year}-{start_month}', end=f'{end_year}-{end_month}', freq='MS').strftime("%Y-%m").tolist()
+
+        # Menggabungkan hasil dominasi tone dengan semua bulan
+        dominant_tone_per_month['year_month'] = dominant_tone_per_month['year'].astype(str) + '-' + dominant_tone_per_month['month'].astype(str).str.zfill(2)
+        dominant_tone_per_month = dominant_tone_per_month.set_index('year_month').reindex(all_months).reset_index()
+        dominant_tone_per_month = dominant_tone_per_month.rename(columns={'index': 'year_month'}).fillna(0)
+
+        # Visualisasi dengan Streamlit
+        st.title('Dominasi Tone per Bulan')
+
+        # Plot dominasi tone per bulan menggunakan Matplotlib
+        fig, ax = plt.subplots(figsize=(14, 7))
+        ax.plot(dominant_tone_per_month['year_month'], dominant_tone_per_month['dominant_tone'], marker='o')
+
+        # Menambahkan detail visualisasi
+        ax.set_title('Dominasi Tone per Bulan')
+        ax.set_xlabel('Tahun-Bulan')
+        ax.set_ylabel('Dominasi Tone')
+        ax.set_yticks([-1, 0, 1])
+        ax.set_yticklabels(['Negatif', 'Netral', 'Positif'])
+        ax.set_xticks(dominant_tone_per_month['year_month'][::3])  # Show every 3rd month for better readability
+        ax.set_xticklabels(dominant_tone_per_month['year_month'][::3], rotation=90)
+        ax.grid(True)
+        plt.tight_layout()
+
+        # Menampilkan plot di Streamlit
+        st.pyplot(fig)
+        st.divider()
+        st.write("**Insight**: Akhir-akhir ini aplikasi sedang mendapatkan sentimen yang buruk mengingat sekitar 6 bulan terakhir tone negatif lebih dominan daripada positif ataupun netral.")
+        st.divider()
+
+        st.subheader('WordCloud untuk Tone Positif')
 
         # Menggabungkan teks dari kolom "content" menjadi satu string
         text = " ".join(df[df['tone'] == 1]['content'])
@@ -153,8 +222,11 @@ def main():
 
         # Menampilkan WordCloud menggunakan st.image
         st.image(wordcloud.to_array(), use_column_width=True)
+        st.divider()
+        st.write("**Insight**: pengguna sering menggunakan kata-kata seperti 'sangat membantu', 'terima kasih', 'lebih baik', dan 'bermanfaat'. Kata-kata ini mengindikasikan bahwa pengguna merasa aplikasi ini memberikan manfaat yang signifikan dan memudahkan proses administrasi kependudukan. Ucapan terima kasih yang sering muncul menunjukkan apresiasi tinggi terhadap kemudahan dan efisiensi yang disediakan oleh aplikasi ini. Selain itu, ada juga harapan untuk peningkatan lebih lanjut, seperti yang tercermin dalam kata-kata 'lebih baik' dan 'semoga.'")
+        st.divider()
 
-        st.title('WordCloud')
+        st.subheader('WordCloud untuk Tone Negatif')
 
         # Menggabungkan teks dari kolom "content" menjadi satu string
         text = " ".join(df[df['tone'] == -1]['content'])
@@ -162,10 +234,14 @@ def main():
         # Membuat WordCloud
         wordcloud = WordCloud(width=800, height=400, background_color="white").generate(text)
 
-        # Menampilkan WordCloud menggunakan st.image
+        # Menampilkan WordCloud menggu
+        # nakan st.image
         st.image(wordcloud.to_array(), use_column_width=True)
+        st.divider()
+        st.write("**Insight**: pengguna sering menggunakan kata-kata seperti 'tidak bisa', 'scan barcode', 'ke dukcapil', dan 'ke kantor'. Kata-kata ini mengindikasikan bahwa pengguna merasa aplikasi ini terkadang memberikan masalah yang signifikan dan menyulitkan proses administrasi kependudukan.")
+        st.divider()
 
-        st.title('Top 15 Bigrams for Positive Reviews')
+        st.title('Top 15 Bigrams untuk Tone Positif')
 
         df_positive_tone = df[df['tone'] == 1]
 
@@ -190,8 +266,13 @@ def main():
 
         # Buat visualisasi diagram batang menggunakan st.bar_chart
         st.bar_chart(pd.Series(top_15_bigrams))
+        st.divider()
+        st.write("**Insight**: Kita bisa melihat kata-kata yang sering muncul dengan mudah menggunakan visualisasi ini. Terlihat pengguna sering menggunakan kata-kata seperti 'sangat membantu', 'sangat bermanfaat', 'terima kasih', dan sebagainya yang menunjukan bahwa aplikasi ini membantu pengguna tersebut dalam hal administratif.")
+        st.divider()
 
-        st.title('Top 15 Bigrams for Negative Reviews')
+
+        st.subheader('Top 15 Bigrams untuk Tone Negatif')
+        
 
         df_negative_tone = df[df['tone'] == -1]
 
@@ -216,10 +297,13 @@ def main():
 
         # Buat visualisasi diagram batang menggunakan st.bar_chart
         st.bar_chart(pd.Series(top_15_bigrams))
+        st.divider()
+        st.write("**Insight**: pengguna sering menggunakan kata-kata seperti 'tidak bisa', 'scan barcode', 'ke dukcapil', dan 'ke kantor'. Kata-kata ini mengindikasikan bahwa terdapat malfungsi pada aplikasi seperti permasalahan pada scan barcode, lalu terdapat masalah lain yang menyebabkan pengguna harus datang ke kantor dukcapil.")
+        st.divider()
         
     elif option == 'Predict':
         st.write("Selamat datang ! Ini adalah halaman prediksi yang berfungsi untuk memprediksi sentiment berdasarkan \
-                 tanggapan yang dimasukan. Tanggapan yang dimasukan bisa berupa teks secara langsung ataupun file excel.")
+                 tanggapan yang dimasukan. Tanggapan yang dimasukan berupa teks secara langsung")
         
         st.header("Prediksi Kalimat Secara Langsung")
         input_text = st.text_area("Masukkan teks:")
@@ -227,8 +311,15 @@ def main():
         text = perpanjang_kata_singkatan_teks(text)
 
         if st.button("Predict"):
-            sentimen = predict_sentiment(text)
-            st.write(sentimen)
+            if(len(text) != 0):
+                sentimen = predict_sentiment(text)
+                if(sentimen) == "Positif":
+                    st.balloons()
+                    st.success(f"Text yang Anda masukan memiliki sentimen: {sentimen} 🥳")
+                else:
+                    st.error(f"Text yang Anda masukan memiliki sentimen: {sentimen} 😢")
+            else:
+                st.error(f"Harap masukan teks !")
             
 
 if __name__ == "__main__":
